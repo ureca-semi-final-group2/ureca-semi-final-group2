@@ -1,4 +1,4 @@
-# 🐙 말 많은 무너팀 (Talkative Octopus)
+# 🐙 말 많은 무너팀 (유레카 3기 대면 벡엔드) 
 
 <div align="center">
   <img width="470" alt="말많은무너팀_로고" src="https://github.com/user-attachments/assets/6aac8890-fd93-42c5-b06b-5bb247160969" />
@@ -53,6 +53,9 @@ graph LR
   <a href= "https://shadow-lychee-a03.notion.site/2e0ab48eeb4b8001bb42f7c35e987cd8?source=copy_link">
     <img src="https://img.shields.io/badge/Notion-%23000000.svg?style=for-the-badge&logo=notion&logoColor=white">
   </a>
+  <a href="https://jack36140.atlassian.net/jira/software/projects/MOONU/summary" target="_blank">
+  <img src="https://img.shields.io/badge/jira-0052CC?style=for-the-badge&logo=jira&logoColor=white">
+</a>
 </p>
 
 ### Development
@@ -89,12 +92,13 @@ $ npm install && npm start
 
 ## 👥 팀원 소개
 
-| **🐙 무너 1호** | **🐙 무너 2호** | **🐙 무너 3호** | **🐙 무너 4호** |
-| :---: | :---: | :---: | :---: |
-| <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> |
-| **김이름 (팀장)** | **박이름** | **최이름** | **이이름** |
-| [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) |
-| **Role** <br> Backend / DB | **Role** <br> Frontend / UI | **Role** <br> Backend / Infra | **Role** <br> Frontend / Design |
+| 🐙 무너 1호 | 🐙 무너 2호 | 🐙 무너 3호 | 🐙 무너 4호 | 🐙 무너 5호 | 🐙 무너 6호 | 🐙 무너 7호 |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> |
+| **최훈석 (팀장)** | **윤재민** | **박유빈** | **이경윤** | **임지우** | **유효주** | **최하영** |
+| [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) |
+| Backend / DB | Frontend / UI | Backend / Infra | Frontend / Design | Backend / API | Frontend / UX | Data / QA |
+
 
 ---
 
@@ -102,4 +106,7 @@ $ npm install && npm start
 * **김이름**: "말은 많지만 코드는 간결하게! 끝까지 완주합시다."
 * **박이름**: "즐겁게 소통하며 최고의 시너지를 내보아요!"
 * **최이름**: "기술적인 도전이 기대되는 프로젝트입니다."
+* **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
+* **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
+* **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
 * **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
