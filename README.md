@@ -1,7 +1,8 @@
-# 🐙 말 많은 무너팀 (유레카 3기 대면 벡엔드) 
+# 🐙 말 많은 무너팀 (유레카 3기 대면 백엔드) 
 
 <div align="center">
-  <img width="470" alt="말많은무너팀_로고" src="https://github.com/user-attachments/assets/6aac8890-fd93-42c5-b06b-5bb247160969" />
+  <img width="470" alt="말많은무너팀_로고" src="<img width="1088" height="960" alt="말많은 무너" src="https://github.com/user-attachments/assets/9a54a772-af78-4451-bc60-0528c480b4d6" />
+" />
 
   <h3>"말은 많지만 결과는 확실한, 유레카 대면 종합 프로젝트"</h3>
 
