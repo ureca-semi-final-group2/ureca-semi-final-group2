@@ -7,7 +7,7 @@
 
   <h3>"말은 많지만 결과는 확실한, 유레카 대면 종합 프로젝트"</h3>
 
-  <p>프로젝트에 대한 한 줄 설명을 여기에 적어주세요.</p>
+  <p>대용량 통신 요금 명세서 및 알림 발송 시스템</p>
 
   [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](#)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -38,14 +38,8 @@
 * **✅ 3. 모니터링 툴 시스템**: 대용량 배치 작업 현황 및 시스템 리소스 모니터링
 
 ## 🏗 아키텍처
-> 아래는 예시 다이어그램입니다. 실제 구조에 맞게 수정하거나 이미지를 넣으세요.
+<img width="8192" height="2113" alt="KakaoTalk_20260114_150641603" src="https://github.com/user-attachments/assets/08d38b80-9360-4791-8501-3c232768de8b" />
 
-```mermaid
-graph LR
-    A[Frontend] -- API --> B[Backend Server]
-    B -- Query --> C[(MySQL DB)]
-    B -- Cache --> D[(Redis)]
-```
 
 ## 🛠 기술 스택
 
@@ -66,7 +60,7 @@ graph LR
   <img src="https://img.shields.io/badge/java-%23ED8B00.svg?style=for-the-badge&logo=openjdk&logoColor=white">
   <img src="https://img.shields.io/badge/spring%20boot-%236DB33F.svg?style=for-the-badge&logo=springboot&logoColor=white">
   <img src="https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB">
-  <img src="https://img.shields.io/badge/mysql-%234479A1.svg?style=for-the-badge&logo=mysql&logoColor=white">
+  <img src="https://img.shields.io/badge/postgresql-%234479A1.svg?style=for-the-badge&logo=postgresql&logoColor=white">
 </p>
 노션 링크에 저희 팀의 문서화가 자세히 되어있습니다.
 
@@ -75,22 +69,11 @@ graph LR
 ## 🚀 시작 가이드
 
 ### 요구 사항 (Prerequisites)
-* Java 17+, Node.js 18+
-* MySQL 8.0
+* Java 17+
+* Spring Boot 3.4.1
+* PostgreSQL 18
+* Kafka 3.5 (Confluent 7.5.0)
 
-### 설치 및 실행
-```bash
-# 프로젝트 클론
-$ git clone [https://github.com/your-repo/project.git](https://github.com/your-repo/project.git)
-
-# 백엔드 실행
-$ cd backend
-$ ./gradlew bootRun
-
-# 프론트엔드 실행
-$ cd frontend
-$ npm install && npm start
-```
 ---
 
 ## 👥 팀원 소개
@@ -99,17 +82,17 @@ $ npm install && npm start
 | :---: | :---: | :---: | :---: | :---: | :---: |
 | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> |
 | **최훈석 (팀장)** | **윤재민** | **박유빈** | **이경윤** | **임지우** | **최하영** |
-| [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) |
-| Backend / DB | Frontend / UI | Backend / Infra | Frontend / Design | Backend / API | Data / QA |
+| [@hoonseok0710](https://github.com/) | [@ashmin-yoon](https://github.com/) | [@yubin012](https://github.com/) | [@LeeGyeongYoon-BE](https://github.com/) | [@dnwldla](https://github.com/) | [@rettooo](https://github.com/) |
+| Backend / Infra | Backend / Infra | Backend / Kafka | Backend / DB | Backend / DB | Backend / Kafka |
 
 
 ---
 
-### 🐙 무너팀의 한마디!
-* **김이름**: "말은 많지만 코드는 간결하게! 끝까지 완주합시다."
-* **박이름**: "즐겁게 소통하며 최고의 시너지를 내보아요!"
-* **최이름**: "기술적인 도전이 기대되는 프로젝트입니다."
-* **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
-* **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
-* **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
+### 🐙 역할
+* **최훈석**: "모니터링 툴 작업, 이벤트 알림"
+* **윤재민**: "배치 작업, 약정 및 생일 이벤트 할인"
+* **박유빈**: "발송 배치 작업 후 Kafka 처리"
+* **이경윤**: "부가 서비스 등급제 할인, 장기 고객 할인"
+* **임지우**: "정산작업처리 "
+* **최하영**: "대용량 데이터 카프카 처리"
 
