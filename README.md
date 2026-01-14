@@ -95,9 +95,9 @@ $ npm install && npm start
 
 ## 👥 팀원 소개
 
-| 🐙 무너 1호 | 🐙 무너 2호 | 🐙 무너 3호 | 🐙 무너 4호 | 🐙 무너 5호 | 🐙 무너 6호 | 🐙 무너 7호 |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> |
+| 🐙 무너 1호 | 🐙 무너 2호 | 🐙 무너 3호 | 🐙 무너 4호 | 🐙 무너 5호 | 🐙 무너 6호 |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> |
 | **최훈석 (팀장)** | **윤재민** | **박유빈** | **이경윤** | **임지우** | **최하영** |
 | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) |
 | Backend / DB | Frontend / UI | Backend / Infra | Frontend / Design | Backend / API | Data / QA |
