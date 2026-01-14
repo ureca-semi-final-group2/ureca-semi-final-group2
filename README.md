@@ -80,9 +80,9 @@
 
 | 🐙 무너 1호 | 🐙 무너 2호 | 🐙 무너 3호 | 🐙 무너 4호 | 🐙 무너 5호 | 🐙 무너 6호 |
 | :---: | :---: | :---: | :---: | :---: | :---: |
-| <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> |
+| <img src="https://github.com/hoonseok0710r.png" width="100"/> | <img src="https://github.com/ashmin-yoon.png" width="100"/> | <img src="https://github.com/yubin012.png" width="100"/> | <img src="https://github.com/LeeGyeongYoon-BE.png" width="100"/> | <img src="https://github.com/dnwldla.png" width="100"/> | <img src="https://github.com/rettooo.png" width="100"/> |
 | **최훈석 (팀장)** | **윤재민** | **박유빈** | **이경윤** | **임지우** | **최하영** |
-| [@hoonseok0710](https://github.com/) | [@ashmin-yoon](https://github.com/) | [@yubin012](https://github.com/) | [@LeeGyeongYoon-BE](https://github.com/) | [@dnwldla](https://github.com/) | [@rettooo](https://github.com/) |
+| [@hoonseok0710](https://github.com/hoonseok0710) | [@ashmin-yoon](https://github.com/ashmin-yoon) | [@yubin012](https://github.com/yubin012) | [@LeeGyeongYoon-BE](https://github.com/LeeGyeongYoon-BE) | [@dnwldla](https://github.com/dnwldla) | [@rettooo](https://github.com/rettooo) |
 | Backend / Infra | Backend / Infra | Backend / Kafka | Backend / DB | Backend / DB | Backend / Kafka |
 
 
