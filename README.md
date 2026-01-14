@@ -98,9 +98,9 @@ $ npm install && npm start
 | 🐙 무너 1호 | 🐙 무너 2호 | 🐙 무너 3호 | 🐙 무너 4호 | 🐙 무너 5호 | 🐙 무너 6호 | 🐙 무너 7호 |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> | <img src="https://github.com/identicons/user.png" width="100"/> |
-| **최훈석 (팀장)** | **윤재민** | **박유빈** | **이경윤** | **임지우** | **유효주** | **최하영** |
-| [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) |
-| Backend / DB | Frontend / UI | Backend / Infra | Frontend / Design | Backend / API | Frontend / UX | Data / QA |
+| **최훈석 (팀장)** | **윤재민** | **박유빈** | **이경윤** | **임지우** | **최하영** |
+| [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) | [@github_id](https://github.com/) |
+| Backend / DB | Frontend / UI | Backend / Infra | Frontend / Design | Backend / API | Data / QA |
 
 
 ---
@@ -112,4 +112,4 @@ $ npm install && npm start
 * **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
 * **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
 * **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
-* **이이름**: "사용자 경험을 최우선으로 생각하겠습니다."
+
