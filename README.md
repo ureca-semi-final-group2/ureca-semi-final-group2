@@ -17,16 +17,17 @@
 
 ## 📌 목차
 
-1. [프로젝트 소개](#-프로젝트-소개)
-2. [주요 기능](#-주요-기능)
-3. [아키텍처 및 전체 파이프라인 흐름](#-아키텍처-및-전체-파이프라인-흐름)
-4. [데이터베이스 설계 (Single Source of Truth)](#-데이터베이스-설계-single-source-of-truth)
-5. [Kafka 메시지 처리 및 상태 관리](#-kafka-메시지-처리-및-상태-관리)
-6. [기술적 특이점 및 도전 과제](#-기술적-특이점-및-도전-과제)
-7. [기술 스택](#-기술-스택)
-8. [시작 가이드](#-시작-가이드)
-9. [팀원 소개](#-팀원-소개)
+1. [프로젝트 소개](#-1-프로젝트-소개)
+2. [주요 기능](#-2-주요-기능)
+3. [아키텍처 및 전체 파이프라인 흐름](#-3-아키텍처-및-전체-파이프라인-흐름)
+4. [데이터베이스 설계 (Single Source of Truth)](#-4-데이터베이스-설계-single-source-of-truth)
+5. [Kafka 메시지 처리 및 상태 관리](#-5-kafka-메시지-처리-및-상태-관리)
+6. [기술적 특이점 및 도전 과제](#-6-기술적-특이점-및-도전-과제)
+7. [기술 스택](#-7-기술-스택)
+8. [시작 가이드](#-8-시작-가이드)
+9. [팀원 소개](#-9-팀원-소개)
 
+<br>
 <br>
 
 ## 📝 1. 프로젝트 소개
@@ -84,7 +85,6 @@
 ### 3.1 시스템 아키텍처 개요
 
 <img width="8192" height="3178" alt="Billing Kafka Data Pipeline-2026-01-26-133835" src="https://github.com/user-attachments/assets/73ac3917-34e7-4329-b67f-678ebe48e828" />
-
 
 ### 3.2 논리적 분산 환경 (Spring Profile 기반)
 
@@ -302,12 +302,335 @@ public boolean isDndTime(LocalTime startDndTime, LocalTime endDndTime, LocalTime
 
 <br>
 <br>
+
+## 🗄 4. 데이터베이스 설계 (Single Source of Truth)
+
+### 4.1 Billing 테이블 스키마
+
+```sql
+CREATE TABLE billing_p (
+    id BIGINT NOT NULL,
+    billing_date TIMESTAMP NOT NULL,
+    public_info_id VARCHAR(255),
+    usage_id BIGINT,
+    billing_fee INTEGER,
+    status VARCHAR(20),
+    send_status VARCHAR(20),
+    paid_date TIMESTAMP,
+    billing_details JSONB,
+    
+    PRIMARY KEY (id, billing_date)
+) PARTITION BY RANGE (billing_date);
+```
+
+<br>
+
+### 4.2 Primary Key (복합키)
+
+| 컬럼 | 타입 | 설명 |
+|:---:|:---:|:---|
+| `id` | `BIGINT` | 사용자 청구 ID (TSID 전략) |
+| `billing_date` | `TIMESTAMP` | 청구 기준 월/일 (파티셔닝 키) |
+
+**복합키 사용 이유**:
+- ✅ 동일 사용자의 여러 달 청구서를 구분
+- ✅ Range Partitioning과 자연스럽게 연동
+- ✅ `billing_date` 기준으로 파티션 자동 분할
+
+### 4.3 주요 컬럼
+
+| 컬럼 | 타입 | 설명 |
+|:---:|:---:|:---|
+| `public_info_id` | `VARCHAR(255)` | 회원 공개 정보 ID |
+| `usage_id` | `BIGINT` | 사용량 ID |
+| `billing_fee` | `INTEGER` | 청구 금액 |
+| `status` | `ENUM` | 결제 상태 (PayStatus) |
+| `send_status` | `ENUM` | 발송 상태 (SendStatus) |
+| `paid_date` | `TIMESTAMP` | 결제 완료 시점 |
+| `billing_details` | `JSONB` | 청구 상세 내역 (할인 정보 포함) |
+
+### 4.4 SendStatus 상태 정의
+
+```java
+public enum SendStatus {
+    // 1. 정산 단계
+    CREATED,              // 정산 배치가 완료되어 청구 데이터 생성 완료
+    
+    // 2. 발송 발행 단계
+    SEND_PENDING,         // 발송 배치(15, 21일)가 실행되어 카프카에 메시지 프로듀서 시작
+    
+    // 3. 발송 처리 단계 (Consumer)
+    IN_QUIET_HOUR,       // 금칙시간에 걸려 대기 상태
+    SENDING,             // 금칙시간 x 전송 완료 (실제로는 사용 안 함)
+    
+    // 4. 최종 결과
+    COMPLETED,           // 이메일 발송 완료
+    FAILED               // 발송 실패 (이메일 주소 오류, API 장애 등)
+}
+```
+
+### 4.5 Range Partitioning 전략
+
+PostgreSQL의 Range Partitioning을 활용하여 월별로 테이블을 분할합니다:
+
+```sql
+-- 파티션 테이블 생성
+CREATE TABLE billing_p (
+    id BIGINT,
+    billing_date TIMESTAMP,
+    ...
+) PARTITION BY RANGE (billing_date);
+
+-- 월별 파티션 생성
+CREATE TABLE billing_p_2025_01 PARTITION OF billing_p
+    FOR VALUES FROM ('2025-01-01') TO ('2025-02-01');
+
+CREATE TABLE billing_p_2025_02 PARTITION OF billing_p
+    FOR VALUES FROM ('2025-02-01') TO ('2025-03-01');
+```
+
+**장점**:
+- ✅ 월별 데이터가 물리적으로 분리되어 조회 성능 향상
+- ✅ 오래된 파티션은 별도 스토리지로 이동 가능 (아카이빙)
+- ✅ 파티션 단위 백업 및 복구 가능
+
+### 4.6 JSONB 컬럼 활용
+
+`billing_details`는 JSONB 타입으로 할인 내역을 저장합니다:
+
+```json
+{
+  "discounts": [
+    {
+      "type": "FAMILY",
+      "amount": 5000,
+      "description": "가족 할인"
+    },
+    {
+      "type": "LOYALTY",
+      "amount": 3000,
+      "description": "로열티 할인"
+    }
+  ],
+  "totalDiscount": 8000,
+  "finalAmount": 42000
+}
+```
+
+**장점**:
+- ✅ 스키마 변경 없이 유연한 데이터 저장
+- ✅ PostgreSQL JSONB 인덱스로 빠른 조회 가능
+- ✅ 할인 정책 추가 시 기존 데이터 구조 유지
+
+### 4.7 인덱스 전략
+
+```sql
+-- 복합키 인덱스 (자동 생성)
+CREATE INDEX idx_billing_id_date ON billing_p (id, billing_date);
+
+-- 발송 상태 조회용 인덱스
+CREATE INDEX idx_billing_send_status ON billing_p (send_status, billing_date);
+
+-- 회원별 조회용 인덱스
+CREATE INDEX idx_billing_public_info ON billing_p (public_info_id, billing_date);
+```
+
+### 4.8 상태별 데이터 분포 예상
+
+| 상태 | 설명 | 데이터 분포 |
+|:---:|:---:|:---:|
+| `CREATED` | 정산 완료 | 매월 1일 ~ 14일/20일 |
+| `SEND_PENDING` | 발송 대기 | 발송 배치 실행 중 |
+| `IN_QUIET_HOUR` | 금칙 시간 대기 | 금칙 시간 설정 사용자 |
+| `COMPLETED` | 발송 완료 | 대부분의 최종 상태 |
+| `FAILED` | 발송 실패 | 소수 (에러 로그로 관리) |
+
+### 4.9 EmailFailLog 테이블 스키마
+
+DLT로 전송된 실패 메시지를 저장하는 테이블입니다:
+
+```sql
+CREATE TABLE email_fail_log (
+    id BIGSERIAL PRIMARY KEY,
+    public_info_id VARCHAR(255),
+    sms_status VARCHAR(20),
+    payload TEXT,  -- 원본 Kafka 메시지 JSON (최대 1024자)
+    parse_status VARCHAR(20),
+    created_at TIMESTAMP NOT NULL
+);
+```
+
+**주요 컬럼**:
+- `public_info_id`: 회원 공개 정보 ID
+- `payload`: 원본 Kafka 메시지 JSON (암호화 상태 유지)
+- `parse_status`: JSON 파싱 성공 여부 (`SUCCESS`, `FAIL`)
+- `sms_status`: SMS 전환 발송 상태 (`PENDING`, `SENT`, `FAILED`)
+
+**활용 방안**:
+- ✅ 관리자 대시보드에서 실패 건 조회 및 분석
+- ✅ 수동 SMS 전환 발송 기능 제공
+- ✅ 실패 원인 분석 및 재처리
+
+### 4.10 데이터 일관성 보장
+
+**트랜잭션 전략**:
+- 배치 작업: 청크 단위 트랜잭션 (1,000건)
+- 상태 업데이트: `REQUIRES_NEW` 전파로 독립 트랜잭션
+- 외부 API 호출: 트랜잭션 외부에서 처리
+
+**멱등성 보장**:
+- 상태 체크를 통한 중복 발송 방지
+- Kafka 메시지 키 기반 파티션 라우팅
+- DB 상태를 Single Source of Truth로 사용
+
+<br>
 <br>
 
 
-## 🚀 4. 기술적 특이점 및 도전 과제
+## 📤 5. Kafka 메시지 처리 및 상태 관리
 
-### 4.1 대용량 데이터 처리 전략
+### 5.1 Kafka 토픽 구조
+
+#### 메인 토픽
+
+| 항목 | 값 |
+|:---:|:---:|
+| **토픽명** | `queuing.billing.email.send` |
+| **파티션** | 3개 |
+| **복제본** | 1개 (개발), 3개 권장 (운영) |
+| **Consumer Group** | `cg-billing-email-send` |
+
+**파티션 분산 전략**:
+- ✅ 3개 파티션으로 부하 분산
+- ✅ 동일 사용자의 메시지는 동일 파티션으로 라우팅 (키 기반)
+- ✅ 파티션별 독립적인 처리로 장애 격리
+
+#### DLT (Dead Letter Topic)
+
+| 항목 | 값 |
+|:---:|:---:|
+| **토픽명** | `queuing.billing.email.send.dlt` |
+| **파티션** | 3개 |
+| **복제본** | 1개 (개발) |
+
+**DLT 역할**:
+- ✅ 재시도 실패 메시지 저장
+- ✅ `EmailFailLog` 테이블에 자동 저장
+- ✅ 관리자가 사후 분석 및 수동 처리 가능
+
+### 5.2 Kafka Consumer 설정
+
+#### Ack Mode: MANUAL_IMMEDIATE
+
+```java
+factory.getContainerProperties().setAckMode(
+    ContainerProperties.AckMode.MANUAL_IMMEDIATE
+);
+```
+
+**동작 방식**:
+- ✅ `ack.acknowledge()` 호출 시 즉시 오프셋 커밋
+- ✅ 비동기 작업 완료 후 `whenComplete`에서 Ack 호출
+- ✅ Zombie Consumer 방지 (항상 Ack 호출 보장)
+
+> 💡 **핵심**: 비동기 작업 완료 후 항상 Ack를 호출하여 메시지 유실 방지
+
+#### 재시도 전략
+
+```java
+@RetryableTopic(
+    attempts = "1",  // 최대 재시도 1회
+    dltTopicSuffix = ".dlt",
+    dltStrategy = DltStrategy.FAIL_ON_ERROR,
+    sameIntervalTopicReuseStrategy = SameIntervalTopicReuseStrategy.SINGLE_TOPIC,
+    exclude = { DeserializationException.class }  // 역직렬화 실패는 제외
+)
+```
+
+**재시도 흐름**:
+1. 첫 시도 실패 → 자동 재시도 1회
+2. 재시도 실패 → DLT로 전송
+3. DLT Handler에서 `EmailFailLog` 저장
+
+**설정 상세**:
+- `attempts = "1"`: 최대 1회 재시도 (총 2회 시도)
+- `sameIntervalTopicReuseStrategy.SINGLE_TOPIC`: 재시도 토픽을 단일 토픽으로 재사용
+- `exclude = DeserializationException.class`: 역직렬화 실패는 즉시 DLT로 전송
+
+> 💡 **핵심**: 최대 1회 재시도 후 DLT로 전송하여 무한 재시도 방지
+
+### 5.3 상태 전환 흐름도
+
+<img src="https://github.com/user-attachments/assets/c7536d0a-24d9-42ae-af95-41e6519a12c4" width="400" />
+
+**상태 전환 설명**:
+- **CREATED → SEND_PENDING**: 발송 배치가 Kafka로 메시지 발행
+- **SEND_PENDING → IN_QUIET_HOUR**: 금칙 시간에 걸린 경우
+- **SEND_PENDING → COMPLETED**: 이메일 발송 성공
+- **SEND_PENDING → FAILED**: 이메일 발송 실패 (DLT로 전송)
+- **IN_QUIET_HOUR → SEND_PENDING**: 재발송 배치가 재투입
+
+> 💡 **핵심**: DB 상태를 Single Source of Truth로 사용하여 멱등성 보장
+
+### 5.4 비동기 처리 흐름
+
+```java
+@KafkaListener(topics = TOPIC_NAME, groupId = GROUP_ID)
+public void consume(BillingProducerMessageDto messageDto, Acknowledgment ack) {
+    CompletableFuture.runAsync(() -> {
+        try {
+            billingDispatchService.process(messageDto);
+        } catch (Exception e) {
+            // DLT로 전송
+            kafkaTemplate.send(DLT_TOPIC, messageDto);
+        }
+    }, emailExecutor)
+    .whenComplete((result, ex) -> {
+        // 항상 Ack 호출 (Zombie Consumer 방지)
+        ack.acknowledge();
+    });
+}
+```
+
+**처리 흐름**:
+1. ✅ Kafka에서 메시지 수신
+2. ✅ `emailExecutor` 스레드 풀에 작업 제출
+3. ✅ 비동기로 이메일 발송 처리
+4. ✅ 성공/실패와 관계없이 `ack.acknowledge()` 호출
+5. ✅ 오프셋 커밋으로 다음 메시지 처리 가능
+
+### 5.5 DLT 처리 로직
+
+```java
+@DltHandler
+@Transactional
+public void handleDlt(
+    BillingProducerMessageDto messageDto,
+    Acknowledgment ack,
+    @Header(KafkaHeaders.RECEIVED_TOPIC) String topic,
+    @Header(KafkaHeaders.OFFSET) Long offset
+) {
+    // EmailFailLog 저장
+    String payloadJson = objectMapper.writeValueAsString(messageDto);
+    saveFailLog(publicInfoId, payloadJson, ParseStatus.SUCCESS);
+    
+    // Ack 호출
+    ack.acknowledge();
+}
+```
+
+**DLT 저장 정보**:
+- `publicInfoId`: 회원 공개 정보 ID
+- `payload`: 원본 메시지 JSON (암호화 상태 유지)
+- `parseStatus`: 파싱 성공 여부
+
+
+<br>
+<br>
+
+## 🚀 6. 기술적 특이점 및 도전 과제
+
+### 6.1 대용량 데이터 처리 전략
 
 #### 파티셔닝 기반 병렬 처리
 
@@ -436,351 +759,8 @@ if (billing.getSendStatus() == SendStatus.COMPLETED) {
 - 네트워크 장애로 인한 재시도 시에도 안전
 
 <br>
-
-## 🗄 4. 데이터베이스 설계 (Single Source of Truth)
-
-### 4.1 Billing 테이블 스키마
-
-```sql
-CREATE TABLE billing_p (
-    id BIGINT NOT NULL,
-    billing_date TIMESTAMP NOT NULL,
-    public_info_id VARCHAR(255),
-    usage_id BIGINT,
-    billing_fee INTEGER,
-    status VARCHAR(20),
-    send_status VARCHAR(20),
-    paid_date TIMESTAMP,
-    billing_details JSONB,
-    
-    PRIMARY KEY (id, billing_date)
-) PARTITION BY RANGE (billing_date);
-```
-
-### 4.2 Primary Key (복합키)
-
-| 컬럼 | 타입 | 설명 |
-|:---:|:---:|:---|
-| `id` | `BIGINT` | 사용자 청구 ID (TSID 전략) |
-| `billing_date` | `TIMESTAMP` | 청구 기준 월/일 (파티셔닝 키) |
-
-**복합키 사용 이유**:
-- ✅ 동일 사용자의 여러 달 청구서를 구분
-- ✅ Range Partitioning과 자연스럽게 연동
-- ✅ `billing_date` 기준으로 파티션 자동 분할
-
-### 4.3 주요 컬럼
-
-| 컬럼 | 타입 | 설명 |
-|:---:|:---:|:---|
-| `public_info_id` | `VARCHAR(255)` | 회원 공개 정보 ID |
-| `usage_id` | `BIGINT` | 사용량 ID |
-| `billing_fee` | `INTEGER` | 청구 금액 |
-| `status` | `ENUM` | 결제 상태 (PayStatus) |
-| `send_status` | `ENUM` | 발송 상태 (SendStatus) |
-| `paid_date` | `TIMESTAMP` | 결제 완료 시점 |
-| `billing_details` | `JSONB` | 청구 상세 내역 (할인 정보 포함) |
-
-### 4.4 SendStatus 상태 정의
-
-```java
-public enum SendStatus {
-    // 1. 정산 단계
-    CREATED,              // 정산 배치가 완료되어 청구 데이터 생성 완료
-    
-    // 2. 발송 발행 단계
-    SEND_PENDING,         // 발송 배치(15, 21일)가 실행되어 카프카에 메시지 프로듀서 시작
-    
-    // 3. 발송 처리 단계 (Consumer)
-    IN_QUIET_HOUR,       // 금칙시간에 걸려 대기 상태
-    SENDING,             // 금칙시간 x 전송 완료 (실제로는 사용 안 함)
-    
-    // 4. 최종 결과
-    COMPLETED,           // 이메일 발송 완료
-    FAILED               // 발송 실패 (이메일 주소 오류, API 장애 등)
-}
-```
-
-### 4.5 Range Partitioning 전략
-
-PostgreSQL의 Range Partitioning을 활용하여 월별로 테이블을 분할합니다:
-
-```sql
--- 파티션 테이블 생성
-CREATE TABLE billing_p (
-    id BIGINT,
-    billing_date TIMESTAMP,
-    ...
-) PARTITION BY RANGE (billing_date);
-
--- 월별 파티션 생성
-CREATE TABLE billing_p_2025_01 PARTITION OF billing_p
-    FOR VALUES FROM ('2025-01-01') TO ('2025-02-01');
-
-CREATE TABLE billing_p_2025_02 PARTITION OF billing_p
-    FOR VALUES FROM ('2025-02-01') TO ('2025-03-01');
-```
-
-**장점**:
-- ✅ 월별 데이터가 물리적으로 분리되어 조회 성능 향상
-- ✅ 오래된 파티션은 별도 스토리지로 이동 가능 (아카이빙)
-- ✅ 파티션 단위 백업 및 복구 가능
-
-### 4.6 JSONB 컬럼 활용
-
-`billing_details`는 JSONB 타입으로 할인 내역을 저장합니다:
-
-```json
-{
-  "discounts": [
-    {
-      "type": "FAMILY",
-      "amount": 5000,
-      "description": "가족 할인"
-    },
-    {
-      "type": "LOYALTY",
-      "amount": 3000,
-      "description": "로열티 할인"
-    }
-  ],
-  "totalDiscount": 8000,
-  "finalAmount": 42000
-}
-```
-
-**장점**:
-- ✅ 스키마 변경 없이 유연한 데이터 저장
-- ✅ PostgreSQL JSONB 인덱스로 빠른 조회 가능
-- ✅ 할인 정책 추가 시 기존 데이터 구조 유지
-
-### 4.7 인덱스 전략
-
-```sql
--- 복합키 인덱스 (자동 생성)
-CREATE INDEX idx_billing_id_date ON billing_p (id, billing_date);
-
--- 발송 상태 조회용 인덱스
-CREATE INDEX idx_billing_send_status ON billing_p (send_status, billing_date);
-
--- 회원별 조회용 인덱스
-CREATE INDEX idx_billing_public_info ON billing_p (public_info_id, billing_date);
-```
-
-### 4.8 상태별 데이터 분포 예상
-
-| 상태 | 설명 | 데이터 분포 |
-|:---:|:---:|:---:|
-| `CREATED` | 정산 완료 | 매월 1일 ~ 14일/20일 |
-| `SEND_PENDING` | 발송 대기 | 발송 배치 실행 중 |
-| `IN_QUIET_HOUR` | 금칙 시간 대기 | 금칙 시간 설정 사용자 |
-| `COMPLETED` | 발송 완료 | 대부분의 최종 상태 |
-| `FAILED` | 발송 실패 | 소수 (에러 로그로 관리) |
-
-### 4.9 데이터 일관성 보장
-
-**트랜잭션 전략**:
-- 배치 작업: 청크 단위 트랜잭션 (1,000건)
-- 상태 업데이트: `REQUIRES_NEW` 전파로 독립 트랜잭션
-- 외부 API 호출: 트랜잭션 외부에서 처리
-
-**멱등성 보장**:
-- 상태 체크를 통한 중복 발송 방지
-- Kafka 메시지 키 기반 파티션 라우팅
-- DB 상태를 Single Source of Truth로 사용
-
 <br>
 
-## 📤 5. Kafka 메시지 처리 및 상태 관리
-
-### 5.1 Kafka 토픽 구조
-
-#### 메인 토픽
-
-| 항목 | 값 |
-|:---:|:---:|
-| **토픽명** | `queuing.billing.email.send` |
-| **파티션** | 3개 |
-| **복제본** | 1개 (개발), 3개 권장 (운영) |
-| **Consumer Group** | `cg-billing-email-send` |
-
-**파티션 분산 전략**:
-- ✅ 3개 파티션으로 부하 분산
-- ✅ 동일 사용자의 메시지는 동일 파티션으로 라우팅 (키 기반)
-- ✅ 파티션별 독립적인 처리로 장애 격리
-
-#### DLT (Dead Letter Topic)
-
-| 항목 | 값 |
-|:---:|:---:|
-| **토픽명** | `queuing.billing.email.send.dlt` |
-| **파티션** | 3개 |
-| **복제본** | 1개 (개발) |
-
-**DLT 역할**:
-- ✅ 재시도 실패 메시지 저장
-- ✅ `EmailFailLog` 테이블에 자동 저장
-- ✅ 관리자가 사후 분석 및 수동 처리 가능
-
-### 5.2 Kafka Consumer 설정
-
-#### Ack Mode: MANUAL_IMMEDIATE
-
-```java
-factory.getContainerProperties().setAckMode(
-    ContainerProperties.AckMode.MANUAL_IMMEDIATE
-);
-```
-
-**동작 방식**:
-- ✅ `ack.acknowledge()` 호출 시 즉시 오프셋 커밋
-- ✅ 비동기 작업 완료 후 `whenComplete`에서 Ack 호출
-- ✅ Zombie Consumer 방지 (항상 Ack 호출 보장)
-
-> 💡 **핵심**: 비동기 작업 완료 후 항상 Ack를 호출하여 메시지 유실 방지
-
-#### 재시도 전략
-
-```java
-@RetryableTopic(
-    attempts = "1",  // 최대 재시도 1회
-    dltTopicSuffix = ".dlt",
-    dltStrategy = DltStrategy.FAIL_ON_ERROR
-)
-```
-
-**재시도 흐름**:
-1. 첫 시도 실패 → 자동 재시도 1회
-2. 재시도 실패 → DLT로 전송
-3. DLT Handler에서 `EmailFailLog` 저장
-
-> 💡 **핵심**: 최대 1회 재시도 후 DLT로 전송하여 무한 재시도 방지
-
-### 5.3 상태 전환 흐름도
-<img src="https://github.com/user-attachments/assets/c7536d0a-24d9-42ae-af95-41e6519a12c4" width="400" />
-
-
-
-
-**상태 전환 설명**:
-- **CREATED → SEND_PENDING**: 발송 배치가 Kafka로 메시지 발행
-- **SEND_PENDING → IN_QUIET_HOUR**: 금칙 시간에 걸린 경우
-- **SEND_PENDING → COMPLETED**: 이메일 발송 성공
-- **SEND_PENDING → FAILED**: 이메일 발송 실패 (DLT로 전송)
-- **IN_QUIET_HOUR → SEND_PENDING**: 재발송 배치가 재투입
-
-> 💡 **핵심**: DB 상태를 Single Source of Truth로 사용하여 멱등성 보장
-
-### 5.4 비동기 처리 흐름
-
-```java
-@KafkaListener(topics = TOPIC_NAME, groupId = GROUP_ID)
-public void consume(BillingProducerMessageDto messageDto, Acknowledgment ack) {
-    CompletableFuture.runAsync(() -> {
-        try {
-            billingDispatchService.process(messageDto);
-        } catch (Exception e) {
-            // DLT로 전송
-            kafkaTemplate.send(DLT_TOPIC, messageDto);
-        }
-    }, emailExecutor)
-    .whenComplete((result, ex) -> {
-        // 항상 Ack 호출 (Zombie Consumer 방지)
-        ack.acknowledge();
-    });
-}
-```
-
-**처리 흐름**:
-1. ✅ Kafka에서 메시지 수신
-2. ✅ `emailExecutor` 스레드 풀에 작업 제출
-3. ✅ 비동기로 이메일 발송 처리
-4. ✅ 성공/실패와 관계없이 `ack.acknowledge()` 호출
-5. ✅ 오프셋 커밋으로 다음 메시지 처리 가능
-
-### 5.5 DLT 처리 로직
-
-```java
-@DltHandler
-@Transactional
-public void handleDlt(
-    BillingProducerMessageDto messageDto,
-    Acknowledgment ack,
-    @Header(KafkaHeaders.RECEIVED_TOPIC) String topic,
-    @Header(KafkaHeaders.OFFSET) Long offset
-) {
-    // EmailFailLog 저장
-    String payloadJson = objectMapper.writeValueAsString(messageDto);
-    saveFailLog(publicInfoId, payloadJson, ParseStatus.SUCCESS);
-    
-    // Ack 호출
-    ack.acknowledge();
-}
-```
-
-**DLT 저장 정보**:
-- `publicInfoId`: 회원 공개 정보 ID
-- `payload`: 원본 메시지 JSON (암호화 상태 유지)
-- `parseStatus`: 파싱 성공 여부
-
-<br>
-
-## 🧾 7. Billing 테이블 설계
-
-### 7.1 테이블 스키마
-
-```sql
-CREATE TABLE billing_p (
-    id BIGINT NOT NULL,
-    billing_date TIMESTAMP NOT NULL,
-    public_info_id VARCHAR(255),
-    usage_id BIGINT,
-    billing_fee INTEGER,
-    status VARCHAR(20),
-    send_status VARCHAR(20),
-    paid_date TIMESTAMP,
-    billing_details JSONB,
-    
-    PRIMARY KEY (id, billing_date)
-) PARTITION BY RANGE (billing_date);
-```
-
-### 7.2 인덱스 전략
-
-```sql
--- 복합키 인덱스 (자동 생성)
-CREATE INDEX idx_billing_id_date ON billing_p (id, billing_date);
-
--- 발송 상태 조회용 인덱스
-CREATE INDEX idx_billing_send_status ON billing_p (send_status, billing_date);
-
--- 회원별 조회용 인덱스
-CREATE INDEX idx_billing_public_info ON billing_p (public_info_id, billing_date);
-```
-
-### 7.3 상태별 데이터 분포 예상
-
-| 상태 | 설명 | 데이터 분포 |
-|---|---|---|
-| `CREATED` | 정산 완료 | 매월 1일 ~ 14일/20일 |
-| `SEND_PENDING` | 발송 대기 | 발송 배치 실행 중 |
-| `IN_QUIET_HOUR` | 금칙 시간 대기 | 금칙 시간 설정 사용자 |
-| `COMPLETED` | 발송 완료 | 대부분의 최종 상태 |
-| `FAILED` | 발송 실패 | 소수 (에러 로그로 관리) |
-
-### 7.4 데이터 일관성 보장
-
-**트랜잭션 전략**:
-- 배치 작업: 청크 단위 트랜잭션 (1,000건)
-- 상태 업데이트: `REQUIRES_NEW` 전파로 독립 트랜잭션
-- 외부 API 호출: 트랜잭션 외부에서 처리
-
-**멱등성 보장**:
-- 상태 체크를 통한 중복 발송 방지
-- Kafka 메시지 키 기반 파티션 라우팅
-- DB 상태를 Single Source of Truth로 사용
-
-<br>
 
 ## 🛠 7. 기술 스택
 
