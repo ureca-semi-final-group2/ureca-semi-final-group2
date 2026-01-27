@@ -20,13 +20,12 @@
 1. [프로젝트 소개](#-프로젝트-소개)
 2. [주요 기능](#-주요-기능)
 3. [아키텍처 및 전체 파이프라인 흐름](#-아키텍처-및-전체-파이프라인-흐름)
-4. [기술적 특이점 및 도전 과제](#-기술적-특이점-및-도전-과제)
-5. [데이터베이스 설계 (Single Source of Truth)](#-데이터베이스-설계-single-source-of-truth)
-6. [발송 프로세스 & Kafka 로직](#-발송-프로세스--kafka-로직)
-7. [Billing 테이블 설계](#-billing-테이블-설계)
-8. [기술 스택](#-기술-스택)
-9. [시작 가이드](#-시작-가이드)
-10. [팀원 소개](#-팀원-소개)
+4. [데이터베이스 설계 (Single Source of Truth)](#-데이터베이스-설계-single-source-of-truth)
+5. [Kafka 메시지 처리 및 상태 관리](#-kafka-메시지-처리-및-상태-관리)
+6. [기술적 특이점 및 도전 과제](#-기술적-특이점-및-도전-과제)
+7. [기술 스택](#-기술-스택)
+8. [시작 가이드](#-시작-가이드)
+9. [팀원 소개](#-팀원-소개)
 
 <br>
 
@@ -83,46 +82,51 @@
 ### 3.1 시스템 아키텍처 개요
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    물리적 인프라 (EC2 단일 인스턴스)                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌─────────────────┐ │
-│  │  Billing Batch  │  │  Sending Batch   │  │ Kafka Consumer │ │
-│  │   (Profile:     │  │   (Profile:     │  │  (Profile:      │ │
-│  │ billing-batch)  │  │   producer)     │  │   consumer)     │ │
-│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘ │
-│           │                     │                     │         │
-│           │                     │                     │         │
-│           ▼                     ▼                     ▼         │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │              PostgreSQL Database                         │  │
-│  │  ┌──────────────────────────────────────────────────┐   │  │
-│  │  │  billing_p (Range Partition by billing_date)     │   │  │
-│  │  │  - billing_p_2025_01                             │   │  │
-│  │  │  - billing_p_2025_02                             │   │  │
-│  │  │  - ...                                            │   │  │
-│  │  └──────────────────────────────────────────────────┘   │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│           │                     │                     │         │
-│           │                     │                     │         │
-│           └─────────────────────┴─────────────────────┘         │
-│                                 │                               │
-│                                 ▼                               │
-│                    ┌─────────────────────────┐                 │
-│                    │   Kafka Cluster         │                 │
-│                    │   (KRaft Mode)          │                 │
-│                    │   - 3 Partitions        │                 │
-│                    │   - DLT Topic           │                 │
-│                    └─────────────────────────┘                 │
-│                                 │                               │
-│                                 ▼                               │
-│                    ┌─────────────────────────┐                 │
-│                    │   Email Service          │                 │
-│                    │   (Handlebars Template) │                 │
-│                    └─────────────────────────┘                 │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                  물리적 인프라 (EC2 단일 인스턴스)                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────────────┐    ┌──────────────────┐    ┌─────────────────┐ │
+│  │  Billing Batch   │    │  Sending Batch    │    │ Kafka Consumer  │ │
+│  │  (Profile:       │    │  (Profile:       │    │  (Profile:      │ │
+│  │  billing-batch)  │    │  producer)       │    │  consumer)      │ │
+│  └────────┬─────────┘    └────────┬─────────┘    └────────┬────────┘ │
+│           │                        │                        │         │
+│           │                        │                        │         │
+│           ▼                        ▼                        ▼         │
+│  ┌──────────────────────────────────────────────────────────────────┐  │
+│  │                    PostgreSQL Database                            │  │
+│  │  ┌──────────────────────────────────────────────────────────┐   │  │
+│  │  │  billing_p (Range Partition by billing_date)              │   │  │
+│  │  │    ├─ billing_p_2025_01                                   │   │  │
+│  │  │    ├─ billing_p_2025_02                                   │   │  │
+│  │  │    └─ ...                                                  │   │  │
+│  │  └──────────────────────────────────────────────────────────┘   │  │
+│  └──────────────────────────────────────────────────────────────────┘  │
+│           │                        │                        │         │
+│           │                        │                        │         │
+│           └────────────────────────┴────────────────────────┘         │
+│                                    │                                   │
+│                                    ▼                                   │
+│                    ┌───────────────────────────────────┐             │
+│                    │      Kafka Cluster (KRaft Mode)    │             │
+│                    │  ┌─────────────────────────────┐   │             │
+│                    │  │ queuing.billing.email.send │   │             │
+│                    │  │   - 3 Partitions            │   │             │
+│                    │  └─────────────────────────────┘   │             │
+│                    │  ┌─────────────────────────────┐   │             │
+│                    │  │ queuing.billing.email.send │   │             │
+│                    │  │         .dlt                │   │             │
+│                    │  └─────────────────────────────┘   │             │
+│                    └───────────────────────────────────┘             │
+│                                    │                                   │
+│                                    ▼                                   │
+│                    ┌───────────────────────────────────┐             │
+│                    │      Email Service                 │             │
+│                    │  (Handlebars Template Engine)      │             │
+│                    └───────────────────────────────────┘             │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 3.2 논리적 분산 환경 (Spring Profile 기반)
@@ -137,130 +141,197 @@
 
 ### 3.3 전체 파이프라인 흐름
 
-
-<img width="8192" height="3178" alt="Billing Kafka Data Pipeline-2026-01-26-133835" src="https://github.com/user-attachments/assets/72f95eba-12fa-4500-adc1-378579386717" />
-
 #### 1단계: 월간 정산 (매월 1일 자정)
 
 ```
-[BillingSchedule] 
-  └─> @Scheduled(cron = "0 0 0 1 * *")
-      └─> JobLauncher.run("billingJob")
-          └─> [Master Step] 4개 파티션으로 분할
-              └─> [Worker Step] 각 파티션 병렬 처리
-                  └─> Reader: JdbcPagingItemReader (Chunk 1,000)
-                      └─> Processor: 할인 정책 계산
-                          └─> Writer: Billing 저장 (SendStatus.CREATED)
+┌─────────────────────────────────────────────────────────────┐
+│ [BillingSchedule]                                           │
+│   @Scheduled(cron = "0 0 0 1 * *")                         │
+│                                                             │
+│   └─> JobLauncher.run("billingJob")                        │
+│       │                                                     │
+│       └─> [Master Step] 4개 파티션으로 분할                │
+│           │                                                 │
+│           └─> [Worker Step] 각 파티션 병렬 처리            │
+│               │                                             │
+│               ├─> Reader: JdbcPagingItemReader            │
+│               │   (Chunk Size: 1,000)                      │
+│               │                                             │
+│               ├─> Processor: 할인 정책 계산                │
+│               │   - 가족 할인, 로열티 할인 등              │
+│               │                                             │
+│               └─> Writer: Billing 저장                      │
+│                   └─> SendStatus.CREATED                   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **처리 결과**:
-- 약 100만 건의 청구서 생성
-- 약 500만 건의 세부 내역 데이터 생성
-- 모든 데이터는 `SendStatus.CREATED` 상태로 저장
-- `billing_date` 기준으로 Range Partition 테이블에 분산 저장
+- ✅ 약 100만 건의 청구서 생성
+- ✅ 약 500만 건의 세부 내역 데이터 생성
+- ✅ 모든 데이터는 `SendStatus.CREATED` 상태로 저장
+- ✅ `billing_date` 기준으로 Range Partition 테이블에 분산 저장
 
 #### 2단계: 발송 대상 확정 및 발행 (매월 15일/21일 자정)
 
 ```
-[SendBillingScheduler]
-  └─> @Scheduled(cron = "0 0 0 15,21 * *")
-      └─> JobLauncher.run("sendingJob")
-          └─> Reader: CREATED 상태 + targetDay(15 or 21) 조회
-              └─> MemberPreloadListener: 회원 정보 사전 로딩
-                  └─> Processor: BillingProducerMessageDto 변환
-                      └─> Writer: Kafka Producer로 메시지 발행
-                          └─> DB 상태 업데이트: CREATED → SEND_PENDING
+┌─────────────────────────────────────────────────────────────┐
+│ [SendBillingScheduler]                                      │
+│   @Scheduled(cron = "0 0 0 15,21 * *")                     │
+│                                                             │
+│   └─> JobLauncher.run("sendingJob")                       │
+│       │                                                     │
+│       ├─> Reader: CREATED 상태 + targetDay(15 or 21) 조회  │
+│       │                                                     │
+│       ├─> MemberPreloadListener: 회원 정보 사전 로딩       │
+│       │   (N+1 쿼리 문제 해결)                              │
+│       │                                                     │
+│       ├─> Processor: BillingProducerMessageDto 변환        │
+│       │                                                     │
+│       └─> Writer: Kafka Producer로 메시지 발행             │
+│           │                                                 │
+│           ├─> Kafka Topic: queuing.billing.email.send     │
+│           │   (3개 파티션에 분산)                           │
+│           │                                                 │
+│           └─> DB 상태 업데이트: CREATED → SEND_PENDING     │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **처리 결과**:
-- `targetDay`와 `CREATED` 상태를 만족하는 대상 조회
-- Kafka 토픽(`queuing.billing.email.send`)으로 메시지 발행
-- DB 상태를 `SEND_PENDING`으로 변경
-- 3개 파티션에 분산하여 발행 (부하 분산)
+- ✅ `targetDay`와 `CREATED` 상태를 만족하는 대상 조회
+- ✅ Kafka 토픽(`queuing.billing.email.send`)으로 메시지 발행
+- ✅ DB 상태를 `SEND_PENDING`으로 변경
+- ✅ 3개 파티션에 분산하여 발행 (부하 분산)
 
 #### 3단계: 실시간 필터링 및 금칙 시간(DND) 판단
 
 ```
-[KafkaConsumerListener]
-  └─> @KafkaListener(topics = "queuing.billing.email.send")
-      └─> CompletableFuture.runAsync(() -> {
-            └─> BillingDispatchService.process()
-                └─> processInternal() [트랜잭션 내부]
-                    └─> Billing 조회 (복합키: id + billingDate)
-                        └─> 상태 체크:
-                            ├─> COMPLETED? → Skip (멱등성 보장)
-                            └─> QuietHourService.isDndTime() 체크
-                                ├─> 금칙 시간? → IN_QUIET_HOUR로 변경
-                                └─> 금칙 시간 아님 → 이메일 발송 진행
+┌─────────────────────────────────────────────────────────────┐
+│ [KafkaConsumerListener]                                      │
+│   @KafkaListener(topics = "queuing.billing.email.send")     │
+│                                                             │
+│   └─> CompletableFuture.runAsync(() -> {                   │
+│       │                                                     │
+│       └─> BillingDispatchService.process()                 │
+│           │                                                 │
+│           └─> processInternal() [트랜잭션 내부]             │
+│               │                                             │
+│               ├─> Billing 조회 (복합키: id + billingDate)  │
+│               │                                             │
+│               └─> 상태 체크:                                │
+│                   │                                         │
+│                   ├─> COMPLETED?                           │
+│                   │   └─> Skip (멱등성 보장)                │
+│                   │                                         │
+│                   └─> QuietHourService.isDndTime() 체크     │
+│                       │                                     │
+│                       ├─> 금칙 시간?                        │
+│                       │   └─> IN_QUIET_HOUR로 변경         │
+│                       │                                     │
+│                       └─> 금칙 시간 아님                    │
+│                           └─> 이메일 발송 진행               │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **금칙 시간 판단 로직**:
 ```java
-// 자정 경과 시간대 처리 (예: 22:00 ~ 02:00)
-if (startDndTime.isBefore(endDndTime)) {
+public boolean isDndTime(LocalTime startDndTime, LocalTime endDndTime, LocalTime now) {
     // 같은 날 내 범위 (예: 10:00 ~ 12:00)
-    return now >= start && now < end;
-} else {
+    if (startDndTime.isBefore(endDndTime)) {
+        return now >= start && now < end;
+    }
     // 자정 경과 범위 (예: 22:00 ~ 02:00)
-    return now >= start || now < end;
+    else {
+        return now >= start || now < end;
+    }
 }
 ```
+
+**처리 시나리오**:
+- 22:00 ~ 02:00 설정 시:
+  - 23:00 → 금칙 시간 ✅
+  - 01:00 → 금칙 시간 ✅
+  - 03:00 → 금칙 시간 아님 ❌
 
 #### 4단계: 비동기 발송 및 트랜잭션 분리
 
 ```
-[EmailExecutor Thread Pool]
-  └─> sendEmailAfterTransaction() [트랜잭션 외부]
-      └─> EmailService.sendBillingEmail()
-          └─> Handlebars 템플릿 렌더링
-              └─> 외부 이메일 API 호출
-                  ├─> 성공 → updateStatusToCompleted()
-                  │       └─> SEND_PENDING → COMPLETED
-                  └─> 실패 → updateStatusToFailed()
-                          └─> SEND_PENDING → FAILED
-                              └─> DLT로 전송
+┌─────────────────────────────────────────────────────────────┐
+│ [EmailExecutor Thread Pool]                                 │
+│   Core: 50, Max: 100, Queue: 1000                           │
+│                                                             │
+│   └─> sendEmailAfterTransaction() [트랜잭션 외부]           │
+│       │                                                     │
+│       └─> EmailService.sendBillingEmail()                  │
+│           │                                                 │
+│           ├─> Handlebars 템플릿 렌더링                      │
+│           │                                                 │
+│           └─> 외부 이메일 API 호출                           │
+│               │                                             │
+│               ├─> 성공                                      │
+│               │   └─> updateStatusToCompleted()            │
+│               │       └─> SEND_PENDING → COMPLETED          │
+│               │                                             │
+│               └─> 실패                                       │
+│                   └─> updateStatusToFailed()                │
+│                       └─> SEND_PENDING → FAILED             │
+│                           └─> DLT로 전송                    │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **트랜잭션 분리 전략**:
 - **트랜잭션 1**: DB 조회 및 상태 업데이트 (IN_QUIET_HOUR)
-- **트랜잭션 외부**: 이메일 발송 (외부 API 호출)
-- **트랜잭션 2**: 성공 시 COMPLETED 업데이트
-- **트랜잭션 3**: 실패 시 FAILED 업데이트
+- **트랜잭션 외부**: 이메일 발송 (외부 API 호출) - 블로킹 방지
+- **트랜잭션 2**: 성공 시 COMPLETED 업데이트 (`REQUIRES_NEW`)
+- **트랜잭션 3**: 실패 시 FAILED 업데이트 (`REQUIRES_NEW`)
 
-이를 통해 외부 API 호출이 DB 트랜잭션을 블로킹하지 않습니다.
+> 💡 **핵심**: 외부 API 호출이 DB 트랜잭션을 블로킹하지 않아 시스템 안정성 확보
 
 #### 5단계: 재발송 및 복구 (매시간)
 
 ```
-[SendBillingScheduler]
-  └─> @Scheduled(cron = "0 0 * 15,21 * *")  // 매시간 실행
-      └─> JobLauncher.run("sendingJob")
-          └─> Reader: IN_QUIET_HOUR 상태 조회
-              └─> Processor: 금칙 시간 해제 여부 확인
-                  └─> Writer: Kafka로 재투입
-                      └─> 상태 업데이트: IN_QUIET_HOUR → SEND_PENDING
+┌─────────────────────────────────────────────────────────────┐
+│ [SendBillingScheduler]                                      │
+│   @Scheduled(cron = "0 0 * 15,21 * *")  // 매시간 실행     │
+│                                                             │
+│   └─> JobLauncher.run("sendingJob")                       │
+│       │                                                     │
+│       ├─> Reader: IN_QUIET_HOUR 상태 조회                  │
+│       │                                                     │
+│       ├─> Processor: 금칙 시간 해제 여부 확인              │
+│       │   └─> QuietHourService.isDndTime() 재확인         │
+│       │                                                     │
+│       └─> Writer: Kafka로 재투입                           │
+│           └─> 상태 업데이트: IN_QUIET_HOUR → SEND_PENDING │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **재발송 로직**:
-- 매시간 `IN_QUIET_HOUR` 상태인 데이터를 조회
-- 현재 시간이 금칙 시간이 아니면 Kafka로 재투입
-- 멱등성 보장을 위해 상태를 먼저 확인
+- ✅ 매시간 `IN_QUIET_HOUR` 상태인 데이터를 조회
+- ✅ 현재 시간이 금칙 시간이 아니면 Kafka로 재투입
+- ✅ 멱등성 보장을 위해 상태를 먼저 확인
 
 #### 6단계: DLT 처리 및 실패 로그 저장
 
 ```
-[KafkaConsumerListener]
-  └─> @DltHandler
-      └─> handleDlt()
-          └─> EmailFailLog 저장
-              └─> ParseStatus.SUCCESS or FAIL
-                  └─> 관리자 대시보드에서 조회 가능
+┌─────────────────────────────────────────────────────────────┐
+│ [KafkaConsumerListener]                                      │
+│   @DltHandler                                                │
+│                                                             │
+│   └─> handleDlt()                                          │
+│       │                                                     │
+│       ├─> EmailFailLog 저장                                │
+│       │   ├─> publicInfoId                                 │
+│       │   ├─> payload (원본 메시지 JSON)                   │
+│       │   └─> ParseStatus.SUCCESS or FAIL                  │
+│       │                                                     │
+│       └─> 관리자 대시보드에서 조회 가능                      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **DLT 처리 흐름**:
-- 재시도 실패 또는 특정 예외 발생 시 자동으로 DLT 전송
-- `@DltHandler` 메서드에서 `EmailFailLog` 테이블에 저장
-- 원본 메시지 페이로드를 JSON으로 저장하여 사후 분석 가능
+- ✅ 재시도 실패 또는 특정 예외 발생 시 자동으로 DLT 전송
+- ✅ `@DltHandler` 메서드에서 `EmailFailLog` 테이블에 저장
+- ✅ 원본 메시지 페이로드를 JSON으로 저장하여 사후 분석 가능
 
 <br>
 
@@ -308,7 +379,7 @@ public void beforeChunk(ChunkContext context) {
 - 청크당 1,000건 처리 시 쿼리 수: 1,000회 → 1회로 감소
 - DB I/O 부하 99% 감소
 
-### 4.2 비동기 논블로킹 발송 시스템
+### 6.2 비동기 논블로킹 발송 시스템
 
 #### Thread Pool 기반 병렬 처리
 
@@ -354,7 +425,7 @@ public void updateStatusToCompleted(...) {
 }
 ```
 
-### 4.3 정교한 금칙 시간(DND) 처리
+### 6.3 정교한 금칙 시간(DND) 처리
 
 #### 자정 경과 시간대 처리
 
@@ -378,7 +449,7 @@ public boolean isDndTime(LocalTime startDndTime, LocalTime endDndTime, LocalTime
   - 01:00 → 금칙 시간 ✅
   - 03:00 → 금칙 시간 아님 ❌
 
-### 4.4 멱등성 보장 및 중복 발송 방지
+### 6.4 멱등성 보장 및 중복 발송 방지
 
 Kafka 재시도 시에도 중복 발송을 방지하기 위해 DB 상태를 우선 확인합니다:
 
@@ -396,35 +467,51 @@ if (billing.getSendStatus() == SendStatus.COMPLETED) {
 
 <br>
 
-## 🗄 5. 데이터베이스 설계 (Single Source of Truth)
+## 🗄 4. 데이터베이스 설계 (Single Source of Truth)
 
-### 5.1 Billing 테이블 설계
+### 4.1 Billing 테이블 스키마
 
-#### Primary Key (복합키)
+```sql
+CREATE TABLE billing_p (
+    id BIGINT NOT NULL,
+    billing_date TIMESTAMP NOT NULL,
+    public_info_id VARCHAR(255),
+    usage_id BIGINT,
+    billing_fee INTEGER,
+    status VARCHAR(20),
+    send_status VARCHAR(20),
+    paid_date TIMESTAMP,
+    billing_details JSONB,
+    
+    PRIMARY KEY (id, billing_date)
+) PARTITION BY RANGE (billing_date);
+```
+
+### 4.2 Primary Key (복합키)
 
 | 컬럼 | 타입 | 설명 |
-|---|---|---|
-| `id` | BIGINT | 사용자 청구 ID (TSID 전략) |
-| `billing_date` | TIMESTAMP | 청구 기준 월/일 (파티셔닝 키) |
+|:---:|:---:|:---|
+| `id` | `BIGINT` | 사용자 청구 ID (TSID 전략) |
+| `billing_date` | `TIMESTAMP` | 청구 기준 월/일 (파티셔닝 키) |
 
 **복합키 사용 이유**:
-- 동일 사용자의 여러 달 청구서를 구분
-- Range Partitioning과 자연스럽게 연동
-- `billing_date` 기준으로 파티션 자동 분할
+- ✅ 동일 사용자의 여러 달 청구서를 구분
+- ✅ Range Partitioning과 자연스럽게 연동
+- ✅ `billing_date` 기준으로 파티션 자동 분할
 
-#### 주요 컬럼
+### 4.3 주요 컬럼
 
 | 컬럼 | 타입 | 설명 |
-|---|---|---|
-| `public_info_id` | VARCHAR | 회원 공개 정보 ID |
-| `usage_id` | BIGINT | 사용량 ID |
-| `billing_fee` | INTEGER | 청구 금액 |
-| `status` | ENUM | 결제 상태 (PayStatus) |
-| `send_status` | ENUM | 발송 상태 (SendStatus) |
-| `paid_date` | TIMESTAMP | 결제 완료 시점 |
-| `billing_details` | JSONB | 청구 상세 내역 (할인 정보 포함) |
+|:---:|:---:|:---|
+| `public_info_id` | `VARCHAR(255)` | 회원 공개 정보 ID |
+| `usage_id` | `BIGINT` | 사용량 ID |
+| `billing_fee` | `INTEGER` | 청구 금액 |
+| `status` | `ENUM` | 결제 상태 (PayStatus) |
+| `send_status` | `ENUM` | 발송 상태 (SendStatus) |
+| `paid_date` | `TIMESTAMP` | 결제 완료 시점 |
+| `billing_details` | `JSONB` | 청구 상세 내역 (할인 정보 포함) |
 
-#### SendStatus 상태 정의
+### 4.4 SendStatus 상태 정의
 
 ```java
 public enum SendStatus {
@@ -444,7 +531,7 @@ public enum SendStatus {
 }
 ```
 
-### 5.2 Range Partitioning 전략
+### 4.5 Range Partitioning 전략
 
 PostgreSQL의 Range Partitioning을 활용하여 월별로 테이블을 분할합니다:
 
@@ -465,11 +552,11 @@ CREATE TABLE billing_p_2025_02 PARTITION OF billing_p
 ```
 
 **장점**:
-- 월별 데이터가 물리적으로 분리되어 조회 성능 향상
-- 오래된 파티션은 별도 스토리지로 이동 가능 (아카이빙)
-- 파티션 단위 백업 및 복구 가능
+- ✅ 월별 데이터가 물리적으로 분리되어 조회 성능 향상
+- ✅ 오래된 파티션은 별도 스토리지로 이동 가능 (아카이빙)
+- ✅ 파티션 단위 백업 및 복구 가능
 
-### 5.3 JSONB 컬럼 활용
+### 4.6 JSONB 컬럼 활용
 
 `billing_details`는 JSONB 타입으로 할인 내역을 저장합니다:
 
@@ -493,44 +580,79 @@ CREATE TABLE billing_p_2025_02 PARTITION OF billing_p
 ```
 
 **장점**:
-- 스키마 변경 없이 유연한 데이터 저장
-- PostgreSQL JSONB 인덱스로 빠른 조회 가능
-- 할인 정책 추가 시 기존 데이터 구조 유지
+- ✅ 스키마 변경 없이 유연한 데이터 저장
+- ✅ PostgreSQL JSONB 인덱스로 빠른 조회 가능
+- ✅ 할인 정책 추가 시 기존 데이터 구조 유지
+
+### 4.7 인덱스 전략
+
+```sql
+-- 복합키 인덱스 (자동 생성)
+CREATE INDEX idx_billing_id_date ON billing_p (id, billing_date);
+
+-- 발송 상태 조회용 인덱스
+CREATE INDEX idx_billing_send_status ON billing_p (send_status, billing_date);
+
+-- 회원별 조회용 인덱스
+CREATE INDEX idx_billing_public_info ON billing_p (public_info_id, billing_date);
+```
+
+### 4.8 상태별 데이터 분포 예상
+
+| 상태 | 설명 | 데이터 분포 |
+|:---:|:---:|:---:|
+| `CREATED` | 정산 완료 | 매월 1일 ~ 14일/20일 |
+| `SEND_PENDING` | 발송 대기 | 발송 배치 실행 중 |
+| `IN_QUIET_HOUR` | 금칙 시간 대기 | 금칙 시간 설정 사용자 |
+| `COMPLETED` | 발송 완료 | 대부분의 최종 상태 |
+| `FAILED` | 발송 실패 | 소수 (에러 로그로 관리) |
+
+### 4.9 데이터 일관성 보장
+
+**트랜잭션 전략**:
+- 배치 작업: 청크 단위 트랜잭션 (1,000건)
+- 상태 업데이트: `REQUIRES_NEW` 전파로 독립 트랜잭션
+- 외부 API 호출: 트랜잭션 외부에서 처리
+
+**멱등성 보장**:
+- 상태 체크를 통한 중복 발송 방지
+- Kafka 메시지 키 기반 파티션 라우팅
+- DB 상태를 Single Source of Truth로 사용
 
 <br>
 
-## 📤 6. 발송 프로세스 & Kafka 로직
+## 📤 5. Kafka 메시지 처리 및 상태 관리
 
-### 6.1 Kafka 토픽 구조
+### 5.1 Kafka 토픽 구조
 
 #### 메인 토픽
 
-```
-토픽명: queuing.billing.email.send
-파티션: 3개
-복제본: 1개 (개발), 3개 권장 (운영)
-Consumer Group: cg-billing-email-send
-```
+| 항목 | 값 |
+|:---:|:---:|
+| **토픽명** | `queuing.billing.email.send` |
+| **파티션** | 3개 |
+| **복제본** | 1개 (개발), 3개 권장 (운영) |
+| **Consumer Group** | `cg-billing-email-send` |
 
 **파티션 분산 전략**:
-- 3개 파티션으로 부하 분산
-- 동일 사용자의 메시지는 동일 파티션으로 라우팅 (키 기반)
-- 파티션별 독립적인 처리로 장애 격리
+- ✅ 3개 파티션으로 부하 분산
+- ✅ 동일 사용자의 메시지는 동일 파티션으로 라우팅 (키 기반)
+- ✅ 파티션별 독립적인 처리로 장애 격리
 
 #### DLT (Dead Letter Topic)
 
-```
-토픽명: queuing.billing.email.send.dlt
-파티션: 3개
-복제본: 1개 (개발)
-```
+| 항목 | 값 |
+|:---:|:---:|
+| **토픽명** | `queuing.billing.email.send.dlt` |
+| **파티션** | 3개 |
+| **복제본** | 1개 (개발) |
 
 **DLT 역할**:
-- 재시도 실패 메시지 저장
-- `EmailFailLog` 테이블에 자동 저장
-- 관리자가 사후 분석 및 수동 처리 가능
+- ✅ 재시도 실패 메시지 저장
+- ✅ `EmailFailLog` 테이블에 자동 저장
+- ✅ 관리자가 사후 분석 및 수동 처리 가능
 
-### 6.2 Kafka Consumer 설정
+### 5.2 Kafka Consumer 설정
 
 #### Ack Mode: MANUAL_IMMEDIATE
 
@@ -541,9 +663,11 @@ factory.getContainerProperties().setAckMode(
 ```
 
 **동작 방식**:
-- `ack.acknowledge()` 호출 시 즉시 오프셋 커밋
-- 비동기 작업 완료 후 `whenComplete`에서 Ack 호출
-- Zombie Consumer 방지 (항상 Ack 호출 보장)
+- ✅ `ack.acknowledge()` 호출 시 즉시 오프셋 커밋
+- ✅ 비동기 작업 완료 후 `whenComplete`에서 Ack 호출
+- ✅ Zombie Consumer 방지 (항상 Ack 호출 보장)
+
+> 💡 **핵심**: 비동기 작업 완료 후 항상 Ack를 호출하여 메시지 유실 방지
 
 #### 재시도 전략
 
@@ -560,7 +684,9 @@ factory.getContainerProperties().setAckMode(
 2. 재시도 실패 → DLT로 전송
 3. DLT Handler에서 `EmailFailLog` 저장
 
-### 6.3 상태 전환 흐름도
+> 💡 **핵심**: 최대 1회 재시도 후 DLT로 전송하여 무한 재시도 방지
+
+### 5.3 상태 전환 흐름도
 
 ```
 ┌──────────┐
@@ -593,7 +719,16 @@ factory.getContainerProperties().setAckMode(
            └─> 실패 → FAILED → DLT
 ```
 
-### 6.4 비동기 처리 흐름
+**상태 전환 설명**:
+- **CREATED → SEND_PENDING**: 발송 배치가 Kafka로 메시지 발행
+- **SEND_PENDING → IN_QUIET_HOUR**: 금칙 시간에 걸린 경우
+- **SEND_PENDING → COMPLETED**: 이메일 발송 성공
+- **SEND_PENDING → FAILED**: 이메일 발송 실패 (DLT로 전송)
+- **IN_QUIET_HOUR → SEND_PENDING**: 재발송 배치가 재투입
+
+> 💡 **핵심**: DB 상태를 Single Source of Truth로 사용하여 멱등성 보장
+
+### 5.4 비동기 처리 흐름
 
 ```java
 @KafkaListener(topics = TOPIC_NAME, groupId = GROUP_ID)
@@ -614,13 +749,13 @@ public void consume(BillingProducerMessageDto messageDto, Acknowledgment ack) {
 ```
 
 **처리 흐름**:
-1. Kafka에서 메시지 수신
-2. `emailExecutor` 스레드 풀에 작업 제출
-3. 비동기로 이메일 발송 처리
-4. 성공/실패와 관계없이 `ack.acknowledge()` 호출
-5. 오프셋 커밋으로 다음 메시지 처리 가능
+1. ✅ Kafka에서 메시지 수신
+2. ✅ `emailExecutor` 스레드 풀에 작업 제출
+3. ✅ 비동기로 이메일 발송 처리
+4. ✅ 성공/실패와 관계없이 `ack.acknowledge()` 호출
+5. ✅ 오프셋 커밋으로 다음 메시지 처리 가능
 
-### 6.5 DLT 처리 로직
+### 5.5 DLT 처리 로직
 
 ```java
 @DltHandler
@@ -704,7 +839,7 @@ CREATE INDEX idx_billing_public_info ON billing_p (public_info_id, billing_date)
 
 <br>
 
-## 🛠 8. 기술 스택
+## 🛠 7. 기술 스택
 
 ### Environment
 
@@ -742,7 +877,7 @@ CREATE INDEX idx_billing_public_info ON billing_p (public_info_id, billing_date)
 
 ---
 
-## 🚀 9. 시작 가이드
+## 🚀 8. 시작 가이드
 
 ### 요구 사항 (Prerequisites)
 
@@ -813,7 +948,7 @@ spring.profiles.active: billing-batch,producer,consumer
 
 ---
 
-## 👥 10. 팀원 소개
+## 👥 9. 팀원 소개
 
 | 🐙 무너 1호 | 🐙 무너 2호 | 🐙 무너 3호 | 🐙 무너 4호 | 🐙 무너 5호 | 🐙 무너 6호 |
 | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -833,4 +968,4 @@ spring.profiles.active: billing-batch,producer,consumer
 
 ---
 
-
+**MOONU Backend** - 대용량 통신 요금 명세서 및 알림 발송 시스템
