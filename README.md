@@ -40,6 +40,7 @@
 * **배포 주소**: [🚀 서비스 바로가기 링크]()
 
 <br>
+<br>
 
 ## ✨ 2. 주요 기능
 
@@ -76,58 +77,14 @@
 * **관리자 대응 기능**: 유저 검색을 통한 **강제 발송** 및 실패 로그 기반의 **수동 SMS 전환 발송** 기능을 제공합니다.
 
 <br>
+<br>
 
 ## 🏗 3. 아키텍처 및 전체 파이프라인 흐름
 
 ### 3.1 시스템 아키텍처 개요
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                  물리적 인프라 (EC2 단일 인스턴스)                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌──────────────────┐    ┌──────────────────┐    ┌─────────────────┐ │
-│  │  Billing Batch   │    │  Sending Batch    │    │ Kafka Consumer  │ │
-│  │  (Profile:       │    │  (Profile:       │    │  (Profile:      │ │
-│  │  billing-batch)  │    │  producer)       │    │  consumer)      │ │
-│  └────────┬─────────┘    └────────┬─────────┘    └────────┬────────┘ │
-│           │                        │                        │         │
-│           │                        │                        │         │
-│           ▼                        ▼                        ▼         │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │                    PostgreSQL Database                            │  │
-│  │  ┌──────────────────────────────────────────────────────────┐   │  │
-│  │  │  billing_p (Range Partition by billing_date)              │   │  │
-│  │  │    ├─ billing_p_2025_01                                   │   │  │
-│  │  │    ├─ billing_p_2025_02                                   │   │  │
-│  │  │    └─ ...                                                  │   │  │
-│  │  └──────────────────────────────────────────────────────────┘   │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│           │                        │                        │         │
-│           │                        │                        │         │
-│           └────────────────────────┴────────────────────────┘         │
-│                                    │                                   │
-│                                    ▼                                   │
-│                    ┌───────────────────────────────────┐             │
-│                    │      Kafka Cluster (KRaft Mode)    │             │
-│                    │  ┌─────────────────────────────┐   │             │
-│                    │  │ queuing.billing.email.send │   │             │
-│                    │  │   - 3 Partitions            │   │             │
-│                    │  └─────────────────────────────┘   │             │
-│                    │  ┌─────────────────────────────┐   │             │
-│                    │  │ queuing.billing.email.send │   │             │
-│                    │  │         .dlt                │   │             │
-│                    │  └─────────────────────────────┘   │             │
-│                    └───────────────────────────────────┘             │
-│                                    │                                   │
-│                                    ▼                                   │
-│                    ┌───────────────────────────────────┐             │
-│                    │      Email Service                 │             │
-│                    │  (Handlebars Template Engine)      │             │
-│                    └───────────────────────────────────┘             │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+<img width="8192" height="3178" alt="Billing Kafka Data Pipeline-2026-01-26-133835" src="https://github.com/user-attachments/assets/73ac3917-34e7-4329-b67f-678ebe48e828" />
+
 
 ### 3.2 논리적 분산 환경 (Spring Profile 기반)
 
@@ -171,6 +128,8 @@
 - ✅ 모든 데이터는 `SendStatus.CREATED` 상태로 저장
 - ✅ `billing_date` 기준으로 Range Partition 테이블에 분산 저장
 
+<br>
+
 #### 2단계: 발송 대상 확정 및 발행 (매월 15일/21일 자정)
 
 ```
@@ -201,6 +160,8 @@
 - ✅ Kafka 토픽(`queuing.billing.email.send`)으로 메시지 발행
 - ✅ DB 상태를 `SEND_PENDING`으로 변경
 - ✅ 3개 파티션에 분산하여 발행 (부하 분산)
+
+<br>
 
 #### 3단계: 실시간 필터링 및 금칙 시간(DND) 판단
 
@@ -252,6 +213,8 @@ public boolean isDndTime(LocalTime startDndTime, LocalTime endDndTime, LocalTime
   - 01:00 → 금칙 시간 ✅
   - 03:00 → 금칙 시간 아님 ❌
 
+<br>
+
 #### 4단계: 비동기 발송 및 트랜잭션 분리
 
 ```
@@ -286,6 +249,8 @@ public boolean isDndTime(LocalTime startDndTime, LocalTime endDndTime, LocalTime
 
 > 💡 **핵심**: 외부 API 호출이 DB 트랜잭션을 블로킹하지 않아 시스템 안정성 확보
 
+<br>
+
 #### 5단계: 재발송 및 복구 (매시간)
 
 ```
@@ -309,6 +274,8 @@ public boolean isDndTime(LocalTime startDndTime, LocalTime endDndTime, LocalTime
 - ✅ 매시간 `IN_QUIET_HOUR` 상태인 데이터를 조회
 - ✅ 현재 시간이 금칙 시간이 아니면 Kafka로 재투입
 - ✅ 멱등성 보장을 위해 상태를 먼저 확인
+
+<br>
 
 #### 6단계: DLT 처리 및 실패 로그 저장
 
@@ -334,6 +301,9 @@ public boolean isDndTime(LocalTime startDndTime, LocalTime endDndTime, LocalTime
 - ✅ 원본 메시지 페이로드를 JSON으로 저장하여 사후 분석 가능
 
 <br>
+<br>
+<br>
+
 
 ## 🚀 4. 기술적 특이점 및 도전 과제
 
@@ -687,37 +657,10 @@ factory.getContainerProperties().setAckMode(
 > 💡 **핵심**: 최대 1회 재시도 후 DLT로 전송하여 무한 재시도 방지
 
 ### 5.3 상태 전환 흐름도
+<img src="https://github.com/user-attachments/assets/c7536d0a-24d9-42ae-af95-41e6519a12c4" width="400" />
 
-```
-┌──────────┐
-│ CREATED  │  ← 정산 배치 완료 (매월 1일)
-└────┬─────┘
-     │
-     │ 발송 배치 실행 (매월 15일/21일)
-     ▼
-┌──────────────┐
-│SEND_PENDING  │  ← Kafka Producer 발행
-└──────┬───────┘
-       │
-       │ Kafka Consumer 수신
-       ▼
-   ┌───────────────┐
-   │ 상태 체크      │
-   └───┬───────────┘
-       │
-       ├─> COMPLETED? → Skip (멱등성)
-       │
-       ├─> 금칙 시간? → IN_QUIET_HOUR
-       │                │
-       │                └─> 재발송 배치 (매시간)
-       │                    └─> SEND_PENDING (재투입)
-       │
-       └─> 금칙 시간 아님 → 이메일 발송
-           │
-           ├─> 성공 → COMPLETED
-           │
-           └─> 실패 → FAILED → DLT
-```
+
+
 
 **상태 전환 설명**:
 - **CREATED → SEND_PENDING**: 발송 배치가 Kafka로 메시지 발행
